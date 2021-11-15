@@ -1,77 +1,110 @@
 #include <stdio.h>
 #include <stdlib.h>
-#define N 64
-#define TPB 32
-#define ARRAY_SIZE 10000
+#include <sys/time.h>
+#define NUM_PARTICLES 100000
+#define NUM_ITERATIONS 10000
 
-__global__ void saxpy_kernel(float* x, float* y, const float a) {
-    int i = blockIdx.x*blockDim.x + threadIdx.x;    
-    if(i < ARRAY_SIZE) {
-        y[i] += a*x[i];
+struct Particle {
+    float3 position;
+    float3 velocity;
+};
+
+__host__ __device__ void update_particle(Particle* particle) { 
+        particle->velocity.x = particle->position.x;
+        particle->velocity.y = particle->position.y;
+        particle->velocity.z = particle->position.z;
+        particle->position.x += particle->velocity.x; 
+        particle->position.y += particle->velocity.y;
+        particle->position.z += particle->velocity.z;
+}
+
+__global__ void update_kernel(Particle* particles, const int n) { 
+    int i = blockIdx.x*blockDim.x + threadIdx.x;
+    if (i < n) {    
+        update_particle(particles+i);
     }
 }
 
-__global__ void compare(float *x, float *y) {
-    __shared__ bool b; 
-    if (threadIdx.x == 0) {
-        b = false;
-    }
-    
-    __syncthreads();
-    
-    int i = blockIdx.x*blockDim.x + threadIdx.x;    
-    if (i < ARRAY_SIZE && abs(x[i] - y[i]) > 1e-6) {
-        printf("Mismatch %e, %e \n", x[i], y[i]);
-        b = true;
-    }
-    
-    __syncthreads();
-    
-    if (threadIdx.x == 0) {
-        if (b)
-            printf("Mismatch in block %d \n", blockIdx.x);
-        else 
-            printf("Block %d correct\n", blockIdx.x);
+void update(Particle* particles, const int n) {
+    for (int i = 0; i < n; i++) {
+        update_particle(particles+i);
     }
 }
 
-void saxpy_cpu(float* x, float* y, const float a) {
-    for (int i = 0; i < ARRAY_SIZE; i ++) {
-        y[i] += a*x[i];    
+    
+void initialize_array(Particle *particles, const int n) {
+    for (int i = 0; i < n; i++) {
+        particles[i].position.x = (float)rand()/RAND_MAX; 
+        particles[i].position.y = (float)rand()/RAND_MAX; 
+        particles[i].position.z = (float)rand()/RAND_MAX; 
+        particles[i].velocity = {}; 
     }
 }
 
-void initialize_array(float *x, float *y, const int size) {
-    for (int i = 0; i < size; i++) {
-        x[i] = (float)rand()/RAND_MAX; 
-        y[i] = (float)rand()/RAND_MAX;
+void compare(const Particle *p_cpu, const Particle *p_gpu, const int n) {
+    for (int i = 0; i < n; i++) {
+        if (abs(p_cpu[i].position.x - p_gpu[i].position.x) > 1e6 ||
+        abs(p_cpu[i].position.y - p_gpu[i].position.y) > 1e6 || 
+        abs(p_cpu[i].position.z - p_gpu[i].position.z) > 1e6 ||
+        abs(p_cpu[i].velocity.x - p_gpu[i].velocity.x) > 1e6 ||
+        abs(p_cpu[i].velocity.y - p_gpu[i].velocity.y) > 1e6 ||
+        abs(p_cpu[i].velocity.z - p_gpu[i].velocity.z) > 1e6) {
+            printf("Result not equal\n");
+            return;
+        }
     }
+    printf("Comparison OK\n");
 }
 
 
 int main() {
-    float *xd, *yd = NULL;
-    int arraySize = sizeof(float)*ARRAY_SIZE;    
-    float *x = (float*)malloc(arraySize);
-    float *y = (float*)malloc(arraySize);
-        
+    Particle *particles_d = NULL;
+    int arraySize = sizeof(Particle)*NUM_PARTICLES;    
+    Particle *particles = (Particle*)malloc(arraySize);
+    Particle *particles_cp = (Particle*)malloc(arraySize);
+    Particle *particles_i = (Particle*)malloc(arraySize);
+    timeval *gpu_t1 = (timeval*) malloc(sizeof(timeval));   
+    timeval *gpu_t2 = (timeval*) malloc(sizeof(timeval));   
+    timeval *cpu_t1 = (timeval*) malloc(sizeof(timeval));   
+    timeval *cpu_t2 = (timeval*) malloc(sizeof(timeval));   
 
-    initialize_array(x, y, ARRAY_SIZE);
+    initialize_array(particles, NUM_PARTICLES);
     
-    cudaMalloc(&xd, arraySize);
-    cudaMalloc(&yd, arraySize);
-    cudaMemcpy(xd, x, arraySize, cudaMemcpyDefault);
-    cudaMemcpy(yd, y, arraySize, cudaMemcpyDefault); 
+    cudaMalloc(&particles_d, arraySize);
+    memcpy(particles_i, particles, arraySize);
     
-    printf("Computing SAXPY on the GPU...\n");
-    saxpy_kernel<<<(ARRAY_SIZE + 255)/256,256>>>(xd, yd, 5);
-    printf("computing SAXPY on the CPU...\n");
-    saxpy_cpu(x, y, 5);
+    printf("Computing simulation on the CPU...\n");
+    gettimeofday(cpu_t1, NULL);
+    for (int i = 0; i < NUM_ITERATIONS; i++) {
+        update(particles, NUM_PARTICLES);
+    }
+    gettimeofday(cpu_t2, NULL);
+    printf("CPU time: %e seconds \n", ((cpu_t2->tv_sec + cpu_t2->tv_usec/1e6) - (cpu_t1->tv_sec + cpu_t1->tv_usec/1e6)));
     
-    cudaMemcpy(xd, y, arraySize, cudaMemcpyDefault);
+    printf("Computing simulation on the GPU...\n");
     
-    printf("Comparing the output for each implementation...\n");
-    compare<<<(ARRAY_SIZE + 255)/256,256>>>(xd, yd);
-    cudaDeviceSynchronize();
+    for (int j = 16; j <= 256; j*=2) {
+        printf("Block size: %d\n", j);
+        gettimeofday(gpu_t1, NULL);
+        cudaMemcpy(particles_d, particles_i, arraySize, cudaMemcpyDefault);
+        for (int i = 0; i < NUM_ITERATIONS; i++) {
+            update_kernel<<<(NUM_PARTICLES + j-1)/j,j>>>(particles_d, NUM_PARTICLES);
+        }
+        cudaMemcpy(particles_cp, particles_d, arraySize, cudaMemcpyDefault);
+        gettimeofday(gpu_t2, NULL);
+
+        compare(particles, particles_cp, NUM_PARTICLES); 
+        printf("GPU time: %e seconds \n", ((gpu_t2->tv_sec + gpu_t2->tv_usec/1e6) - (gpu_t1->tv_sec + gpu_t1->tv_usec/1e6)));
+    }
+   
+    
+    free(particles);
+    free(particles_i);
+    free(particles_cp);
+    cudaFree(particles_d);
+    free(gpu_t1);
+    free(gpu_t2);
+    free(cpu_t1);
+    free(cpu_t2);
     return 0;
 }

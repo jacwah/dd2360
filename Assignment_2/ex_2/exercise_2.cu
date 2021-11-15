@@ -72,13 +72,13 @@ int main() {
     saxpy_kernel<<<(ARRAY_SIZE + 255)/256,256>>>(xd, yd, 5);
     cudaDeviceSynchronize();
     gettimeofday(gpu_t2, NULL);
-    printf("GPU time: %ld microseconds \n", (gpu_t2->tv_usec - gpu_t1->tv_usec));
+    printf("GPU time: %e seconds \n", ((gpu_t2->tv_sec + gpu_t2->tv_usec/1e6) - (gpu_t1->tv_sec + gpu_t1->tv_usec/1e6)));
     printf("computing SAXPY on the CPU...\n");
     
     gettimeofday(cpu_t1, NULL);
     saxpy_cpu(x, y, 5);
     gettimeofday(cpu_t2, NULL);
-    printf("CPU time: %ld microseconds \n", (cpu_t2->tv_usec - cpu_t1->tv_usec));
+    printf("CPU time: %e seconds \n", ((cpu_t2->tv_sec + cpu_t2->tv_usec/1e6) - (cpu_t1->tv_sec + cpu_t1->tv_usec/1e6)));
     
     cudaMemcpy(xd, y, arraySize, cudaMemcpyDefault);
     
