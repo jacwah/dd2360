@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/time.h>
 #define N 64
 #define TPB 32
 #define ARRAY_SIZE 10000
@@ -55,10 +54,7 @@ int main() {
     int arraySize = sizeof(float)*ARRAY_SIZE;    
     float *x = (float*)malloc(arraySize);
     float *y = (float*)malloc(arraySize);
-    timeval *gpu_t1 = (timeval*) malloc(sizeof(timeval));   
-    timeval *gpu_t2 = (timeval*) malloc(sizeof(timeval));   
-    timeval *cpu_t1 = (timeval*) malloc(sizeof(timeval));   
-    timeval *cpu_t2 = (timeval*) malloc(sizeof(timeval));   
+        
 
     initialize_array(x, y, ARRAY_SIZE);
     
@@ -68,29 +64,14 @@ int main() {
     cudaMemcpy(yd, y, arraySize, cudaMemcpyDefault); 
     
     printf("Computing SAXPY on the GPU...\n");
-    gettimeofday(gpu_t1, NULL);
     saxpy_kernel<<<(ARRAY_SIZE + 255)/256,256>>>(xd, yd, 5);
-    cudaDeviceSynchronize();
-    gettimeofday(gpu_t2, NULL);
-    printf("GPU time: %ld microseconds \n", (gpu_t2->tv_usec - gpu_t1->tv_usec));
     printf("computing SAXPY on the CPU...\n");
-    
-    gettimeofday(cpu_t1, NULL);
     saxpy_cpu(x, y, 5);
-    gettimeofday(cpu_t2, NULL);
-    printf("CPU time: %ld microseconds \n", (cpu_t2->tv_usec - cpu_t1->tv_usec));
     
     cudaMemcpy(xd, y, arraySize, cudaMemcpyDefault);
     
     printf("Comparing the output for each implementation...\n");
     compare<<<(ARRAY_SIZE + 255)/256,256>>>(xd, yd);
     cudaDeviceSynchronize();
-
-    free(x);
-    free(y);
-    free(gpu_t1);
-    free(gpu_t2);
-    free(cpu_t1);
-    free(cpu_t2);
     return 0;
 }
