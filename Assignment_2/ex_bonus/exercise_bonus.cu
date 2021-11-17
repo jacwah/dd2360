@@ -14,13 +14,13 @@
 #define real double
 #endif
 
-__global__ void calc_prob(const int iterations, unsigned long long *counts) {
+__global__ void calc_prob(const long long iterations, unsigned long long *counts) {
     unsigned long long count = 0;
     int idx = threadIdx.x + blockIdx.x*blockDim.x;
     extern __shared__ curandState state[];
     
     curand_init(SEED, idx, 0, &state[threadIdx.x]); 
-    for (int iter = 0; iter < iterations; iter++)
+    for (long long iter = 0; iter < iterations; iter++)
     {
         real x, y, z;
 
@@ -63,8 +63,8 @@ int main(int argc, char* argv[])
         unsigned long long *counts_h = (unsigned long long*)malloc(sizeof(unsigned long long)*blocks);
         
         
-        int iterations = (NUM_ITER + (i*blocks - 1))/ (i*blocks);
-        //printf("Total iterations: %i\n", iterations);
+        long long iterations = (NUM_ITER + (i*blocks - 1))/ (i*blocks);
+        //printf("Total itterations: %lld\n", iterations);
         
         calc_prob<<<blocks, i, i*sizeof(curandState)>>>(iterations, counts);
         
