@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
-#define NUM_PARTICLES 100000
+#define NUM_PARTICLES 10000000
 #define NUM_ITERATIONS 10000
 
 struct Particle {
