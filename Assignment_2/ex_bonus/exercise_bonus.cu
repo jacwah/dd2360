@@ -3,12 +3,12 @@
 #include <stdint.h>
 #include <string.h>
 #include <math.h>
-#include <time.h>
+#include <sys/time.h>
 #include <curand.h>
 #include <curand_kernel.h>
 
 #define SEED     921
-#define NUM_ITER 100000000
+#define NUM_ITER 1e10
 
 __global__ void calc_prob(const int iterations, unsigned long long *counts) {
     unsigned long long count = 0;
@@ -44,17 +44,19 @@ int main(int argc, char* argv[])
     for(int i = 16; i <= 256; i*=2) {
         unsigned long long int count = 0;
         unsigned long long *counts = NULL;
+        timeval t1, t2;
         
         int blocks = (640 + (i - 1))/i;
         printf("Blocks: %i  Threads per block: %i\n", blocks, i);
         
+        gettimeofday(&t1, NULL);
         cudaMalloc(&counts, sizeof(unsigned long long)*blocks);
         cudaMemset(counts, 0, sizeof(unsigned long long)*blocks);
         unsigned long long *counts_h = (unsigned long long*)malloc(sizeof(unsigned long long)*blocks);
         
         
         int iterations = (NUM_ITER + (i*blocks - 1))/ (i*blocks);
-        printf("Total itterations: %i\n", iterations);
+        //printf("Total iterations: %i\n", iterations);
         
         calc_prob<<<blocks, i, i*sizeof(curandState)>>>(iterations, counts);
         
@@ -67,8 +69,8 @@ int main(int argc, char* argv[])
         
         // Estimate Pi and display the result
         double pi = ((double)count / (double)(iterations*i*blocks)) * 4.0;
-    
-        printf("The result is %f\n", pi);
+        gettimeofday(&t2, NULL);
+        printf("The result is %e, time: %e\n", pi, (t2.tv_sec + t2.tv_usec/1e6) - (t1.tv_sec + t1.tv_usec/1e6));
 
         cudaFree(counts);
         free(counts_h);   
