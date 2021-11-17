@@ -10,6 +10,10 @@
 #define SEED     921
 #define NUM_ITER 100000000
 
+#ifndef real
+#define real double
+#endif
+
 __global__ void calc_prob(const int iterations, unsigned long long *counts) {
     unsigned long long count = 0;
     int idx = threadIdx.x + blockIdx.x*blockDim.x;
@@ -18,7 +22,7 @@ __global__ void calc_prob(const int iterations, unsigned long long *counts) {
     curand_init(SEED, idx, 0, &state[threadIdx.x]); 
     for (int iter = 0; iter < iterations; iter++)
     {
-        double x, y, z;
+        real x, y, z;
 
         // Generate random (X,Y) points
         x = curand_uniform(&state[threadIdx.x]);
@@ -26,12 +30,16 @@ __global__ void calc_prob(const int iterations, unsigned long long *counts) {
         z = (x*x) + (y*y);
 
         // Check if point is in unit circle
-        if (z <= 1.0) {
+        if (z <= ((real)1.0)) {
             count++;
         }
     }
 
+#if __CUDA_ARCH__ >= 600
     atomicAdd_block(&counts[blockIdx.x], count);
+#else
+    atomicAdd(&counts[blockIdx.x], count);
+#endif
 }
 
 
