@@ -7,7 +7,7 @@
 #include <curand.h>
 #include <curand_kernel.h>
 
-#define SEED     921
+#define SEED     9291
 #define NUM_ITER 1e10
 
 #ifndef real
@@ -49,22 +49,26 @@ int main(int argc, char* argv[])
     //int blocks, iterations;
     //srand(SEED); // Important: Multiply SEED by "rank" when you introduce MPI!
     
+    unsigned long long *counts = NULL;
+    cudaMalloc(&counts, sizeof(unsigned long long)*48); //48 is the largest amount of blocks that will be used
+    
+    unsigned long long *counts_h = (unsigned long long*)malloc(sizeof(unsigned long long)*48);
+    
     for(int i = 16; i <= 256; i*=2) {
         unsigned long long int count = 0;
-        unsigned long long *counts = NULL;
         timeval t1, t2;
         
-        int blocks = (640 + (i - 1))/i;
+        int blocks = ((3*256) + (i - 1))/i;
         printf("Blocks: %i  Threads per block: %i\n", blocks, i);
+        //printf("%i, %i\n", blocks, i);
         
         gettimeofday(&t1, NULL);
-        cudaMalloc(&counts, sizeof(unsigned long long)*blocks);
-        cudaMemset(counts, 0, sizeof(unsigned long long)*blocks);
-        unsigned long long *counts_h = (unsigned long long*)malloc(sizeof(unsigned long long)*blocks);
-        
+   
+        cudaMemset(counts, 0, sizeof(unsigned long long)*blocks);    
         
         long long iterations = (NUM_ITER + (i*blocks - 1))/ (i*blocks);
-        //printf("Total itterations: %lld\n", iterations);
+        printf("Total iterations: %lld\n", iterations*blocks*i);
+        //printf("%lld\n", iterations*blocks*i);
         
         calc_prob<<<blocks, i, i*sizeof(curandState)>>>(iterations, counts);
         
@@ -78,12 +82,13 @@ int main(int argc, char* argv[])
         // Estimate Pi and display the result
         double pi = ((double)count / (double)(iterations*i*blocks)) * 4.0;
         gettimeofday(&t2, NULL);
-        printf("The result is %e, time: %e\n", pi, (t2.tv_sec + t2.tv_usec/1e6) - (t1.tv_sec + t1.tv_usec/1e6));
+        printf("The error is %e, time: %e\n", (abs(M_PI - pi)), (t2.tv_sec + t2.tv_usec/1e6) - (t1.tv_sec + t1.tv_usec/1e6));
+        //printf("%e, %e\n", (abs(M_PI - pi)), (t2.tv_sec + t2.tv_usec/1e6) - (t1.tv_sec + t1.tv_usec/1e6));
 
-        cudaFree(counts);
-        free(counts_h);   
     }
     
+    cudaFree(counts);
+    free(counts_h);   
     
     return 0;
 }
