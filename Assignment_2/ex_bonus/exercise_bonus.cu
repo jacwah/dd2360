@@ -8,10 +8,16 @@
 #include <curand_kernel.h>
 
 #define SEED     9291
-#define NUM_ITER 1e10
+#define NUM_ITER 1e9
 
-#ifndef real
-#define real double
+#ifndef PRECISION
+#define PRECISION 2
+#endif
+
+#if PRECISION == 1
+    #define real float
+#else
+    #define real double
 #endif
 
 __global__ void calc_prob(const long long iterations, unsigned long long *counts) {
@@ -25,8 +31,13 @@ __global__ void calc_prob(const long long iterations, unsigned long long *counts
         real x, y, z;
 
         // Generate random (X,Y) points
-        x = curand_uniform(&state[threadIdx.x]);
-        y = curand_uniform(&state[threadIdx.x]);
+        #if PRECISION != 1
+            x = curand_uniform_double(&state[threadIdx.x]);
+            y = curand_uniform_double(&state[threadIdx.x]);
+        #else 
+            x = curand_uniform(&state[threadIdx.x]);
+            y = curand_uniform(&state[threadIdx.x]);
+        #endif
         z = (x*x) + (y*y);
 
         // Check if point is in unit circle
@@ -44,11 +55,7 @@ __global__ void calc_prob(const long long iterations, unsigned long long *counts
 
 
 int main(int argc, char* argv[])
-{
-    //double pi;
-    //int blocks, iterations;
-    //srand(SEED); // Important: Multiply SEED by "rank" when you introduce MPI!
-    
+{    
     unsigned long long *counts = NULL;
     cudaMalloc(&counts, sizeof(unsigned long long)*48); //48 is the largest amount of blocks that will be used
     
