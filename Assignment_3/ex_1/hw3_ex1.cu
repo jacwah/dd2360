@@ -327,7 +327,7 @@ __global__ void gpu_sobel(int width, int height, float *image, float *image_out)
         int offset_t = index_y * width + index_x;
         int offset   = (index_y + 1) * width + (index_x + 1);
         float gx = applyFilter(&image[offset_t], width, sobel_x, 3);
-        float gy = applyFilter(&image[offset_t], width, sobel_x, 3);
+        float gy = applyFilter(&image[offset_t], width, sobel_y, 3);
             
             // Note: The output can be negative or exceed the max. color value
             // of 255. We compensate this afterwards while storing the file.
