@@ -5,6 +5,7 @@
 #include <sys/time.h>
 
 #define BLOCK_SIZE  16
+#define BLOCK_SIZE_SH 18
 #define HEADER_SIZE 138
 
 typedef unsigned char BYTE;
@@ -216,21 +217,6 @@ __host__ __device__ float applyFilter(float *image, int stride, float *matrix, i
 }
 
 /**
- * Applies a 3x3 convolution matrix to a pixel using the GPU.
- */
-__device__ float gpu_applyFilter(float *image, int stride, float *matrix, int filter_dim)
-{
-    ////////////////
-    // TO-DO #5.2 ////////////////////////////////////////////////
-    // Implement the GPU version of cpu_applyFilter()           //
-    //                                                          //
-    // Does it make sense to have a separate gpu_applyFilter()? //
-    //////////////////////////////////////////////////////////////
-    
-    return 0.0f;
-}
-
-/**
  * Applies a Gaussian 3x3 filter to a given image using the CPU.
  */
 void cpu_gaussian(int width, int height, float *image, float *image_out)
@@ -260,17 +246,22 @@ __global__ void gpu_gaussian(int width, int height, float *image, float *image_o
     float gaussian[9] = { 1.0f / 16.0f, 2.0f / 16.0f, 1.0f / 16.0f,
                           2.0f / 16.0f, 4.0f / 16.0f, 2.0f / 16.0f,
                           1.0f / 16.0f, 2.0f / 16.0f, 1.0f / 16.0f };
+
+    __shared__ float sh_block[BLOCK_SIZE_SH * BLOCK_SIZE_SH];
+
+    int index_x = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+    int index_y = blockIdx.y * BLOCK_SIZE + threadIdx.y;
+
+    int offset_t = index_y * width + index_x;
+    int offset   = (index_y + 1) * width + (index_x + 1);
     
-    int index_x = blockIdx.x * blockDim.x + threadIdx.x;
-    int index_y = blockIdx.y * blockDim.y + threadIdx.y;
-    
-    if (index_x < (width - 2) && index_y < (height - 2))
+    sh_block[threadIdx.x + BLOCK_SIZE_SH*threadIdx.y] = image[offset_t];
+
+    __syncthreads();
+
+    if (index_x < (width - 2) && index_y < (height - 2) && threadIdx.x < BLOCK_SIZE && threadIdx.y < BLOCK_SIZE)
     {
-        int offset_t = index_y * width + index_x;
-        int offset   = (index_y + 1) * width + (index_x + 1);
-        
-        image_out[offset] = applyFilter(&image[offset_t],
-                                            width, gaussian, 3);
+        image_out[offset] = applyFilter(&sh_block[threadIdx.x + BLOCK_SIZE_SH*threadIdx.y], BLOCK_SIZE_SH, gaussian, 3);
     }
 }
 
@@ -383,7 +374,7 @@ int main(int argc, char **argv)
     {
         // Launch the CPU version
         gettimeofday(&t[0], NULL);
-        //cpu_grayscale(bitmap.width, bitmap.height, bitmap.data, image_out[0]);
+        cpu_grayscale(bitmap.width, bitmap.height, bitmap.data, image_out[0]);
         gettimeofday(&t[1], NULL);
         
         elapsed[0] = get_elapsed(t[0], t[1]);
@@ -407,14 +398,14 @@ int main(int argc, char **argv)
     {
         // Launch the CPU version
         gettimeofday(&t[0], NULL);
-        //cpu_gaussian(bitmap.width, bitmap.height, image_out[0], image_out[1]);
+        cpu_gaussian(bitmap.width, bitmap.height, image_out[0], image_out[1]);
         gettimeofday(&t[1], NULL);
         
         elapsed[0] = get_elapsed(t[0], t[1]);
         
         // Launch the GPU version
         gettimeofday(&t[0], NULL);
-        gpu_gaussian<<<grid, block>>>(bitmap.width, bitmap.height,
+        gpu_gaussian<<<grid, dim3(BLOCK_SIZE_SH,BLOCK_SIZE_SH)>>>(bitmap.width, bitmap.height,
                                        d_image_out[0], d_image_out[1]);
         
         cudaMemcpy(image_out[1], d_image_out[1],
@@ -431,7 +422,7 @@ int main(int argc, char **argv)
     {
         // Launch the CPU version
         gettimeofday(&t[0], NULL);
-        //cpu_sobel(bitmap.width, bitmap.height, image_out[1], image_out[0]);
+        cpu_sobel(bitmap.width, bitmap.height, image_out[1], image_out[0]);
         gettimeofday(&t[1], NULL);
         
         elapsed[0] = get_elapsed(t[0], t[1]);
