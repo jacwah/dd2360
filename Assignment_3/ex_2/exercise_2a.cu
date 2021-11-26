@@ -7,7 +7,7 @@
 // 40 GB memory
 // sizeof(Particle) = 4*3*2 = 24 bytes
 // 40 GB / 24 B = 1.6 G particles
-#define NUM_PARTICLES 1.6e9
+#define NUM_PARTICLES 1.6e8
 #define NUM_ITERATIONS 10
 
 

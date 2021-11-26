@@ -7,7 +7,7 @@
 // 40 GB memory
 // sizeof(Particle) = 4*3*2 = 24 bytes
 // 40 GB / 24 B = 1.6 G particles
-#define NUM_PARTICLES 1.6e9
+#define NUM_PARTICLES 1.6e8
 #define NUM_ITERATIONS 10
 
 
@@ -74,9 +74,9 @@ int main() {
     //Particle *particles_cpu = (Particle*)malloc(arraySize);
 
     const uint64_t BLOCK_SIZE = 64;
-    const uint64_t NUM_BATCHES = 8;
+    const uint64_t NUM_BATCHES = 4*1e3;
     const uint64_t BATCH_SIZE = NUM_PARTICLES / NUM_BATCHES;
-    const uint64_t NUM_STREAMS = 4;
+    const uint64_t NUM_STREAMS = 8;
     const uint64_t BATCHES_PER_STREAM = NUM_BATCHES / NUM_STREAMS;
     
     cudaMallocHost(&particles, arraySize);
