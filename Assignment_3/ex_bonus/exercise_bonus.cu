@@ -169,20 +169,13 @@ void global_sgemm_kernel(float *C, float *A, float *B, long size)
 	const long row = blockIdx.y * blockDim.y + threadIdx.y;
 	float val = 0.0;
 
-	/* TODO declare shared memory with size TILE_SIZE x TILE_SIZE */
-	//__shared__ float tile_A[TILE_SIZE][TILE_SIZE];
-	//__shared__ float tile_B[TILE_SIZE][TILE_SIZE];
-
-		
+	/* TODO declare shared memory with size TILE_SIZE x TILE_SIZE */		
 
 	if (col < size && row < size) {
 		const long local_col = blockIdx.x * TILE_SIZE + threadIdx.x;
 		const long local_row = blockIdx.y * TILE_SIZE + threadIdx.y;
 
 		for (long m = 0; m < size / TILE_SIZE; ++m) {
-			//tile_A[threadIdx.y][threadIdx.x] = A[local_row * size + (m * TILE_SIZE + threadIdx.x)];
-			//tile_B[threadIdx.y][threadIdx.x] = B[(m * TILE_SIZE + threadIdx.y) * size + local_col];
-			//__syncthreads();
 	
 			/* TODO introduce a pragma directive that can potentially improve performance here */
 			
@@ -191,7 +184,6 @@ void global_sgemm_kernel(float *C, float *A, float *B, long size)
 				/* TODO Perform multiplication here */
 				val += A[local_row * size + (m * TILE_SIZE) + k] * B[(m * TILE_SIZE + k) * size + local_col];
 			}
-			//__syncthreads();
 		}
 
 		C[local_row * size + local_col] = val;
