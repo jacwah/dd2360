@@ -1,18 +1,58 @@
 // Template file for the OpenCL Assignment 4
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/time.h>
+#include <math.h>
 #include <CL/cl.h>
+
+#define ARRAY_SIZE 1e8
+
 // This is a macro for checking the error variable.
 #define CHK_ERROR(err) if (err != CL_SUCCESS) fprintf(stderr,"Error: %s\n",clGetErrorString(err));
 // A errorCode to string converter (forward declaration)
 const char* clGetErrorString(int);
 
 
+void compare(float *x, float *y, size_t n) {
+  for (size_t i = 0; i < n; i++) {
+    float diff = abs(x[i] - y[i]);
+    if (diff > 1e-6) {
+      printf("Arrays are not equal! Index: %ld, Values: %e, %e, diff %e\n", i, x[i], y[i], diff);
+      return;
+    }
+  }
+  printf("OK!\n");
+}
+
+void saxpy_cpu(float* x, float* y, const float a) {
+    for (size_t i = 0; i < ARRAY_SIZE; i ++) {
+        y[i] += a*x[i];    
+    }
+}
+
+void initialize_array(float *x, float *y, const size_t size) {
+    for (size_t i = 0; i < size; i++) {
+        x[i] = (float)rand()/RAND_MAX; 
+        y[i] = (float)rand()/RAND_MAX;
+    }
+}
+
+#define xstr(s) str(s)
+#define str(s) #s
 const char *mykernel =
 "__kernel "
-"void helloWorld() "
-"{ printf(\"hello world %lu,%lu,%lu\\n\", get_global_id(0), get_global_id(1), get_global_id(2));}"
-;
+"void saxpy_kernel(__global float* x, __global float* y, float a) { "
+" size_t i = get_global_id(0);"   
+" if(i < "xstr(ARRAY_SIZE)") { "
+"   y[i] += a*x[i];"
+" }"
+"}";
+// const char *mykernel =
+// "__kernel "
+// "void saxpy_kernel(__global float* x, __global float* y) { "
+// "printf(\"Hello World %d\", get_global_id(0));"
+// "}";
+
 
 int main(int argc, char *argv) {
   cl_platform_id * platforms; cl_uint n_platform;
@@ -34,38 +74,100 @@ int main(int argc, char *argv) {
   CHK_ERROR(err);
 
   // Create a command queue
-  cl_command_queue cmd_queue = clCreateCommandQueue(context, device_list[0], 0, 
-&err);CHK_ERROR(err); 
+  cl_command_queue cmd_queue = clCreateCommandQueueWithProperties(context, device_list[0], 0, 
+&err); CHK_ERROR(err); 
 
-  /* Insert your own code here */
-  
+  //allocate arrays on host
+  size_t array_size = sizeof(cl_float)*ARRAY_SIZE;
+  cl_float *x = (cl_float*)malloc(array_size);
+  cl_float *y = (cl_float*)malloc(array_size);
+  cl_float *y_res = (cl_float*)malloc(array_size);
+  cl_float a = 1.5f;
+
+  struct timeval gpu_t1;
+  struct timeval gpu_t2;
+  struct timeval cpu_t1;
+  struct timeval cpu_t2;
+
+  //allocate arrays on device
+  cl_mem x_dev = clCreateBuffer (context, CL_MEM_READ_ONLY, array_size, NULL, &err); 
+  CHK_ERROR(err);
+  cl_mem y_dev = clCreateBuffer (context, CL_MEM_READ_WRITE, array_size, NULL, &err); 
+  CHK_ERROR(err);
+
+  //cl_mem a_dev = clCreateBuffer (context, CL_MEM_READ_ONLY, sizeof(cl_float), NULL, &err);
+
+  //Initialize arrays with random data
+  initialize_array(x, y, ARRAY_SIZE);
+
   cl_program prog = clCreateProgramWithSource(context, 1, &mykernel, NULL, &err);
-  
+  //CHK_ERROR(err);
   err = clBuildProgram(prog, 1, device_list, NULL, NULL, NULL);
+  CHK_ERROR(err);
+
   if (err != CL_SUCCESS)
   { size_t len;
-    char buffer[2048];
+    char buffer[2048] = {};
     clGetProgramBuildInfo(prog, device_list[0], CL_PROGRAM_BUILD_LOG, sizeof(buffer), buffer, &len);
-    fprintf(stderr,"Build error: %s\n", buffer); return 0; }
+    fprintf(stderr,"Build error: %s\n", buffer); return 0; 
+    }
 
-  cl_kernel kernel = clCreateKernel(prog, "helloWorld", &err);
+  cl_kernel kernel = clCreateKernel(prog, "saxpy_kernel", &err);
   CHK_ERROR(err);
-
-  size_t n_workitem[3] = {16, 16, 16};
-  size_t workgroup_size[3] = {4, 4, 4};
   
-  // Launch the kernel!
-  err = clEnqueueNDRangeKernel (cmd_queue, kernel, 3, NULL, n_workitem, workgroup_size, 0, NULL, NULL);
-  CHK_ERROR(err);
 
-  err = clFinish(cmd_queue);
-  CHK_ERROR(err);
+
+  err = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *) &x_dev); CHK_ERROR(err);
+  err = clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *) &y_dev); CHK_ERROR(err);
+  err = clSetKernelArg(kernel, 2, sizeof(cl_float), (void *) &a); CHK_ERROR(err);
+
+  // Transfer data from host to device
+  err = clEnqueueWriteBuffer (cmd_queue, x_dev, CL_TRUE, 0, array_size, x, 0, NULL, NULL); CHK_ERROR(err);
+  err = clEnqueueWriteBuffer (cmd_queue, y_dev, CL_TRUE, 0, array_size, y, 0, NULL, NULL); CHK_ERROR(err);
+  //err = clEnqueueWriteBuffer (cmd_queue, a_dev, CL_TRUE, 0, sizeof(cl_float), &a, 0, NULL, NULL);CHK_ERROR(err);
+  
+  size_t workgroup_size = 256;
+  size_t n_workitem = ceil(ARRAY_SIZE/(double)workgroup_size) * workgroup_size;
+
+
+  // Launch the kernel!
+  clFinish(cmd_queue);
+  printf("Computing SAXPY on the GPU...\n");
+  gettimeofday(&gpu_t1, NULL);
+  err = clEnqueueNDRangeKernel (cmd_queue, kernel, 1, NULL, &n_workitem, &workgroup_size, 0, NULL, NULL); CHK_ERROR(err);
+
+  clFinish(cmd_queue);
+
+  gettimeofday(&gpu_t2, NULL);
+  printf("GPU time: %e seconds \n", ((gpu_t2.tv_sec + gpu_t2.tv_usec/1e6) - (gpu_t1.tv_sec + gpu_t1.tv_usec/1e6)));
+  
+  // Transfer data back to host
+  err = clEnqueueReadBuffer (cmd_queue, y_dev, CL_TRUE, 0, array_size, y_res, 0, NULL, NULL); CHK_ERROR(err)
+
+  err = clFlush(cmd_queue); CHK_ERROR(err);
+
+
+  err = clFinish(cmd_queue); CHK_ERROR(err);
 
   // Finally, release all that we have allocated.
   err = clReleaseCommandQueue(cmd_queue);CHK_ERROR(err);
+  
+  // clReleaseContext frees memory allocated in the context, as well as command queues etc
   err = clReleaseContext(context);CHK_ERROR(err);
   free(platforms);
   free(device_list);
+
+
+  // Run on host
+  printf("Computing SAXPY on the CPU...\n");
+  gettimeofday(&cpu_t1, NULL);
+  saxpy_cpu(x, y, a);
+  gettimeofday(&cpu_t2, NULL);
+  printf("CPU time: %e seconds \n", ((cpu_t2.tv_sec + cpu_t2.tv_usec/1e6) - (cpu_t1.tv_sec + cpu_t1.tv_usec/1e6)));
+
+  // Compare device and host results
+  printf("Comparing results...\n");
+  compare(y, y_res, ARRAY_SIZE);
 
   return 0;
 }
