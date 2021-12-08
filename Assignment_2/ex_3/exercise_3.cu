@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
-#define NUM_PARTICLES 10000000
-#define NUM_ITERATIONS 10000
+#define NUM_PARTICLES 1e6
+#define NUM_ITERATIONS 10
 
 struct Particle {
     float3 position;

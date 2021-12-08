@@ -112,10 +112,7 @@ int main(int argc, char *argv) {
     fprintf(stderr,"Build error: %s\n", buffer); return 0; 
     }
 
-  cl_kernel kernel = clCreateKernel(prog, "saxpy_kernel", &err);
-  CHK_ERROR(err);
-  
-
+  cl_kernel kernel = clCreateKernel(prog, "saxpy_kernel", &err); CHK_ERROR(err);
 
   err = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *) &x_dev); CHK_ERROR(err);
   err = clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *) &y_dev); CHK_ERROR(err);
@@ -129,7 +126,6 @@ int main(int argc, char *argv) {
   size_t workgroup_size = 256;
   size_t n_workitem = ceil(ARRAY_SIZE/(double)workgroup_size) * workgroup_size;
 
-
   // Launch the kernel!
   clFinish(cmd_queue);
   printf("Computing SAXPY on the GPU...\n");
@@ -140,23 +136,21 @@ int main(int argc, char *argv) {
 
   gettimeofday(&gpu_t2, NULL);
   printf("GPU time: %e seconds \n", ((gpu_t2.tv_sec + gpu_t2.tv_usec/1e6) - (gpu_t1.tv_sec + gpu_t1.tv_usec/1e6)));
-  
+
   // Transfer data back to host
   err = clEnqueueReadBuffer (cmd_queue, y_dev, CL_TRUE, 0, array_size, y_res, 0, NULL, NULL); CHK_ERROR(err)
 
   err = clFlush(cmd_queue); CHK_ERROR(err);
 
-
   err = clFinish(cmd_queue); CHK_ERROR(err);
 
   // Finally, release all that we have allocated.
-  err = clReleaseCommandQueue(cmd_queue);CHK_ERROR(err);
+  err = clReleaseCommandQueue(cmd_queue); CHK_ERROR(err);
   
   // clReleaseContext frees memory allocated in the context, as well as command queues etc
-  err = clReleaseContext(context);CHK_ERROR(err);
+  err = clReleaseContext(context); CHK_ERROR(err);
   free(platforms);
   free(device_list);
-
 
   // Run on host
   printf("Computing SAXPY on the CPU...\n");
